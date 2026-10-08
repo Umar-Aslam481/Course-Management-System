@@ -1,8 +1,12 @@
 #include <iostream>
+#include <vector>
+#include <memory>
+#include <limits>
+#include <variant>
+#include <algorithm>
+#include <string>
 using namespace std;
 
-// Maximum number of courses that can be stored in the system
-const int MAX_COURSES = 100;
 
 // Enumeration for semester terms (FALL, SPRING, SUMMER, WINTER)
 enum class SemesterTerm { FALL, SPRING, SUMMER, WINTER };
@@ -17,13 +21,12 @@ struct Semester {
 };
 
 // Union to hold course-specific information (different for core vs elective courses)
-union CourseInfo {
-    struct {
-        int lectureHours;  // Core courses have lecture hours
-    } core;
-    struct {
-        int labHours;  // Elective courses have lab hours
-    } elective;
+struct CoreInfo {
+    int lectureHours;
+};
+
+struct ElectiveInfo {
+    int labHours;
 };
 
 // Structure to represent a course with all its attributes
@@ -34,7 +37,7 @@ struct Course {
     string instructor;    // Name of the instructor
     Semester semester;    // Semester when the course is offered
     bool isCoreCourse;    // Flag: true for core, false for elective
-    CourseInfo info;      // Additional info (lecture/lab hours)
+    std::variant<CoreInfo, ElectiveInfo> info;  // Additional info (lecture/lab hours)
 };
 
 // Abstract base class defining the interface for course management
@@ -47,39 +50,56 @@ public:
     virtual void removeCourse() = 0;        // Remove a course
     virtual void searchByCode() = 0;        // Search by course code
     virtual void listBySemester() = 0;      // List courses by semester
+    virtual void clearInputBuffer() = 0;
+    virtual ~Manager() = default;
 };
 
 // Concrete class implementing the course management functionality
 class CourseManager : public Manager {
 private:
-    Course courses[MAX_COURSES];  // Array to store all courses
-    int courseCount = 0;          // Counter for number of courses added
+    std::vector<Course> courses;  // Vector to store all courses
+
+
 
     // Helper function to get semester term from user input
     SemesterTerm getTermFromUser() {
         int choice;
-        cout << "Select Term:\n"
-             << "1. Fall\n2. Spring\n3. Summer\n4. Winter\nChoice: ";
-        cin >> choice;
-        return static_cast<SemesterTerm>(choice - 1);  // Convert input to enum
+        while (true) {
+            cout << "Select Term:\n"
+                 << "1. Fall\n2. Spring\n3. Summer\n4. Winter\nChoice: ";
+            if (cin >> choice && choice >= 1 && choice <= 4) {
+                return static_cast<SemesterTerm>(choice - 1);
+            }
+            cout << "Invalid input. Please enter a number between 1 and 4.\n";
+            clearInputBuffer();
+        }
     }
 
     // Helper function to get semester year from user input
     SemesterYear getYearFromUser() {
         int choice;
-        cout << "Select Year:\n"
-             << "1. 2025\n2. 2026\n3. 2027\n4. 2028\nChoice: ";
-        cin >> choice;
-        return static_cast<SemesterYear>(choice - 1);  // Convert input to enum
+        while (true) {
+            cout << "Select Year:\n"
+                 << "1. 2025\n2. 2026\n3. 2027\n4. 2028\nChoice: ";
+            if (cin >> choice && choice >= 1 && choice <= 4) {
+                return static_cast<SemesterYear>(choice - 1);
+            }
+            cout << "Invalid input. Please enter a number between 1 and 4.\n";
+            clearInputBuffer();
+        }
     }
 
 public:
+    // Helper function to clear input buffer on invalid input
+    void clearInputBuffer() override {
+        if (cin.fail()) {
+            cin.clear();
+            cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        }
+    }
     // Implementation of adding a new course
     void addCourse() override {
-        if (courseCount >= MAX_COURSES) {
-            cout << "Maximum number of courses reached!\n";
-            return;
-        }
+
 
         Course newCourse;
         cin.ignore();  // Clear any leftover newline in input buffer
@@ -91,8 +111,12 @@ public:
         cout << "Enter Course Code: ";
         getline(cin, newCourse.code);
 
-        cout << "Enter Credit Hours: ";
-        cin >> newCourse.creditHours;
+        while (true) {
+            cout << "Enter Credit Hours: ";
+            if (cin >> newCourse.creditHours) break;
+            cout << "Invalid input. Please enter a number.\n";
+            clearInputBuffer();
+        }
 
         cout << "Enter Instructor Name: ";
         cin.ignore();  // Clear buffer before getting line
@@ -103,46 +127,65 @@ public:
         newCourse.semester.year = getYearFromUser();
 
         // Determine if course is core or elective
-        cout << "Is this a Core Course? (1 for Yes, 0 for No): ";
-        cin >> newCourse.isCoreCourse;
+        while (true) {
+            cout << "Is this a Core Course? (1 for Yes, 0 for No): ";
+            int temp;
+            if (cin >> temp && (temp == 0 || temp == 1)) {
+                newCourse.isCoreCourse = temp;
+                break;
+            }
+            cout << "Invalid input. Please enter 1 or 0.\n";
+            clearInputBuffer();
+        }
 
         // Get additional info based on course type
         if (newCourse.isCoreCourse) {
             cout << "Enter Lecture Hours: ";
-            cin >> newCourse.info.core.lectureHours;
+            CoreInfo cInfo;
+            while (!(cin >> cInfo.lectureHours)) {
+                cout << "Invalid input. Please enter a number.\nEnter Lecture Hours: ";
+                clearInputBuffer();
+            }
+            newCourse.info = cInfo;
         } else {
             cout << "Enter Lab Hours: ";
-            cin >> newCourse.info.elective.labHours;
+            ElectiveInfo eInfo;
+            while (!(cin >> eInfo.labHours)) {
+                cout << "Invalid input. Please enter a number.\nEnter Lab Hours: ";
+                clearInputBuffer();
+            }
+            newCourse.info = eInfo;
         }
 
         // Add the new course to the array and increment count
-        courses[courseCount++] = newCourse;
+        courses.push_back(newCourse);
         cout << "Course added successfully!\n";
     }
 
     // Implementation of displaying all courses
     void displayCourses() override {
-        if (courseCount == 0) {
+        if (courses.empty()) {
             cout << "No courses to display!\n";
             return;
         }
 
         // Loop through all courses and print their details
-        for (int i = 0; i < courseCount; i++) {
-            cout << "\nCourse " << (i + 1) << ":\n"
-                 << "Name: " << courses[i].name << "\n"
-                 << "Code: " << courses[i].code << "\n"
-                 << "Credits: " << courses[i].creditHours << "\n"
-                 << "Instructor: " << courses[i].instructor << "\n"
-                 << "Term: " << static_cast<int>(courses[i].semester.term) + 1 << "\n"
-                 << "Year: " << (2023 + static_cast<int>(courses[i].semester.year)) << "\n"
-                 << "Type: " << (courses[i].isCoreCourse ? "Core" : "Elective") << "\n";
+        int i = 0;
+        for (const auto& course : courses) {
+            cout << "\nCourse " << (++i) << ":\n"
+                 << "Name: " << course.name << "\n"
+                 << "Code: " << course.code << "\n"
+                 << "Credits: " << course.creditHours << "\n"
+                 << "Instructor: " << course.instructor << "\n"
+                 << "Term: " << static_cast<int>(course.semester.term) + 1 << "\n"
+                 << "Year: " << (2023 + static_cast<int>(course.semester.year)) << "\n"
+                 << "Type: " << (course.isCoreCourse ? "Core" : "Elective") << "\n";
             
             // Print additional info based on course type
-            if (courses[i].isCoreCourse) {
-                cout << "Lecture Hours: " << courses[i].info.core.lectureHours << "\n";
-            } else {
-                cout << "Lab Hours: " << courses[i].info.elective.labHours << "\n";
+            if (std::holds_alternative<CoreInfo>(course.info)) {
+                cout << "Lecture Hours: " << std::get<CoreInfo>(course.info).lectureHours << "\n";
+            } else if (std::holds_alternative<ElectiveInfo>(course.info)) {
+                cout << "Lab Hours: " << std::get<ElectiveInfo>(course.info).labHours << "\n";
             }
             cout << "-----------------------------\n";
         }
@@ -155,34 +198,41 @@ public:
         cin >> code;
 
         // Search for the course by code
-        for (int i = 0; i < courseCount; i++) {
-            if (courses[i].code == code) {
-                cout << "Updating course:\n";
-                Course& course = courses[i];  // Reference to the found course
-                
-                // Update name
-                cout << "New Course Name (" << course.name << "): ";
-                cin.ignore();
-                getline(cin, course.name);
+        auto it = std::find_if(courses.begin(), courses.end(), [&code](const Course& c) { return c.code == code; });
+        if (it != courses.end()) {
+            cout << "Updating course:\n";
+            Course& course = *it;  // Reference to the found course
 
-                // Update credit hours
+            // Update name
+            cout << "New Course Name (" << course.name << "): ";
+            cin.ignore();
+            getline(cin, course.name);
+
+            // Update credit hours
+            while (true) {
                 cout << "New Credit Hours (" << course.creditHours << "): ";
-                cin >> course.creditHours;
-
-                // Optionally update semester
-                cout << "Update semester? (1=Yes, 0=No): ";
-                int choice;
-                cin >> choice;
-                if (choice) {
-                    course.semester.term = getTermFromUser();
-                    course.semester.year = getYearFromUser();
-                }
-
-                cout << "Course updated successfully!\n";
-                return;
+                if (cin >> course.creditHours) break;
+                cout << "Invalid input. Please enter a number.\n";
+                clearInputBuffer();
             }
+
+            // Optionally update semester
+            int choice;
+            while (true) {
+                cout << "Update semester? (1=Yes, 0=No): ";
+                if (cin >> choice && (choice == 0 || choice == 1)) break;
+                cout << "Invalid input. Please enter 1 or 0.\n";
+                clearInputBuffer();
+            }
+            if (choice) {
+                course.semester.term = getTermFromUser();
+                course.semester.year = getYearFromUser();
+            }
+
+            cout << "Course updated successfully!\n";
+        } else {
+            cout << "Course not found!\n";
         }
-        cout << "Course not found!\n";
     }
 
     // Implementation of removing a course
@@ -191,19 +241,14 @@ public:
         cout << "Enter course code to remove: ";
         cin >> code;
 
-        // Search for the course by code
-        for (int i = 0; i < courseCount; i++) {
-            if (courses[i].code == code) {
-                // Shift all subsequent courses left to fill the gap
-                for (int j = i; j < courseCount - 1; j++) {
-                    courses[j] = courses[j + 1];
-                }
-                courseCount--;  // Decrease total course count
-                cout << "Course removed successfully!\n";
-                return;
-            }
+        // Search for the course by code and remove it
+        auto it = std::find_if(courses.begin(), courses.end(), [&code](const Course& c) { return c.code == code; });
+        if (it != courses.end()) {
+            courses.erase(it);
+            cout << "Course removed successfully!\n";
+        } else {
+            cout << "Course not found!\n";
         }
-        cout << "Course not found!\n";
     }
 
     // Implementation of searching for a course by code
@@ -213,17 +258,16 @@ public:
         cin >> code;
 
         // Search for the course
-        for (int i = 0; i < courseCount; i++) {
-            if (courses[i].code == code) {
-                // Display basic course info if found
-                cout << "Course found:\n"
-                     << "Name: " << courses[i].name << "\n"
-                     << "Code: " << courses[i].code << "\n"
-                     << "Instructor: " << courses[i].instructor << "\n";
-                return;
-            }
+        auto it = std::find_if(courses.begin(), courses.end(), [&code](const Course& c) { return c.code == code; });
+        if (it != courses.end()) {
+            // Display basic course info if found
+            cout << "Course found:\n"
+                 << "Name: " << it->name << "\n"
+                 << "Code: " << it->code << "\n"
+                 << "Instructor: " << it->instructor << "\n";
+        } else {
+            cout << "Course not found!\n";
         }
-        cout << "Course not found!\n";
     }
 
     // Implementation of listing courses by semester
@@ -236,10 +280,10 @@ public:
         bool found = false;
         
         // Search for matching courses
-        for (int i = 0; i < courseCount; i++) {
-            if (courses[i].semester.term == term && 
-                courses[i].semester.year == year) {
-                cout << "- " << courses[i].code << ": " << courses[i].name << "\n";
+        for (const auto& course : courses) {
+            if (course.semester.term == term &&
+                course.semester.year == year) {
+                cout << "- " << course.code << ": " << course.name << "\n";
                 found = true;
             }
         }
@@ -253,7 +297,7 @@ public:
 // Main function - entry point of the program
 int main() {
     // Create a CourseManager instance (polymorphically as a Manager)
-    Manager* manager = new CourseManager();
+    std::unique_ptr<Manager> manager = std::make_unique<CourseManager>();
     int choice;
 
     // Main menu loop
@@ -267,7 +311,14 @@ int main() {
              << "6. List by Semester\n"
              << "7. Exit\n"
              << "Enter your choice: ";
-        cin >> choice;
+
+        if (!(cin >> choice)) {
+            if (cin.eof()) break; // Exit gracefully on EOF
+            cout << "Invalid choice! Please enter a number between 1 and 7.\n";
+            manager->clearInputBuffer();
+            choice = 0; // reset choice to avoid matching any valid case
+            continue;
+        }
 
         // Execute the selected operation
         switch (choice) {
