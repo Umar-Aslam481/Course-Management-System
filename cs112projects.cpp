@@ -1,8 +1,14 @@
 #include <iostream>
+#include <vector>
+#include <memory>
+#include <limits>
+#include <variant>
+#include <algorithm>
+#include <string>
+#include <sstream>
+#include <gtkmm.h>
 using namespace std;
 
-// Maximum number of courses that can be stored in the system
-const int MAX_COURSES = 100;
 
 // Enumeration for semester terms (FALL, SPRING, SUMMER, WINTER)
 enum class SemesterTerm { FALL, SPRING, SUMMER, WINTER };
@@ -17,13 +23,12 @@ struct Semester {
 };
 
 // Union to hold course-specific information (different for core vs elective courses)
-union CourseInfo {
-    struct {
-        int lectureHours;  // Core courses have lecture hours
-    } core;
-    struct {
-        int labHours;  // Elective courses have lab hours
-    } elective;
+struct CoreInfo {
+    int lectureHours;
+};
+
+struct ElectiveInfo {
+    int labHours;
 };
 
 // Structure to represent a course with all its attributes
@@ -34,268 +39,330 @@ struct Course {
     string instructor;    // Name of the instructor
     Semester semester;    // Semester when the course is offered
     bool isCoreCourse;    // Flag: true for core, false for elective
-    CourseInfo info;      // Additional info (lecture/lab hours)
+    std::variant<CoreInfo, ElectiveInfo> info;  // Additional info (lecture/lab hours)
 };
 
 // Abstract base class defining the interface for course management
 class Manager {
 public:
-    // Pure virtual functions (must be implemented by derived classes)
-    virtual void addCourse() = 0;           // Add a new course
-    virtual void displayCourses() = 0;      // Display all courses
-    virtual void updateCourse() = 0;        // Update a course
-    virtual void removeCourse() = 0;        // Remove a course
-    virtual void searchByCode() = 0;        // Search by course code
-    virtual void listBySemester() = 0;      // List courses by semester
+    virtual string addCourse(const Course& course) = 0;
+    virtual string displayCourses() = 0;
+    virtual string updateCourse(const string& code, const Course& new_data, bool update_semester) = 0;
+    virtual string removeCourse(const string& code) = 0;
+    virtual string searchByCode(const string& code) = 0;
+    virtual string listBySemester(SemesterTerm term, SemesterYear year) = 0;
+    virtual ~Manager() = default;
 };
 
 // Concrete class implementing the course management functionality
 class CourseManager : public Manager {
 private:
-    Course courses[MAX_COURSES];  // Array to store all courses
-    int courseCount = 0;          // Counter for number of courses added
-
-    // Helper function to get semester term from user input
-    SemesterTerm getTermFromUser() {
-        int choice;
-        cout << "Select Term:\n"
-             << "1. Fall\n2. Spring\n3. Summer\n4. Winter\nChoice: ";
-        cin >> choice;
-        return static_cast<SemesterTerm>(choice - 1);  // Convert input to enum
-    }
-
-    // Helper function to get semester year from user input
-    SemesterYear getYearFromUser() {
-        int choice;
-        cout << "Select Year:\n"
-             << "1. 2025\n2. 2026\n3. 2027\n4. 2028\nChoice: ";
-        cin >> choice;
-        return static_cast<SemesterYear>(choice - 1);  // Convert input to enum
-    }
+    std::vector<Course> courses;
 
 public:
-    // Implementation of adding a new course
-    void addCourse() override {
-        if (courseCount >= MAX_COURSES) {
-            cout << "Maximum number of courses reached!\n";
-            return;
-        }
-
-        Course newCourse;
-        cin.ignore();  // Clear any leftover newline in input buffer
-
-        // Get course details from user
-        cout << "\nEnter Course Name: ";
-        getline(cin, newCourse.name);
-
-        cout << "Enter Course Code: ";
-        getline(cin, newCourse.code);
-
-        cout << "Enter Credit Hours: ";
-        cin >> newCourse.creditHours;
-
-        cout << "Enter Instructor Name: ";
-        cin.ignore();  // Clear buffer before getting line
-        getline(cin, newCourse.instructor);
-
-        // Get semester information
-        newCourse.semester.term = getTermFromUser();
-        newCourse.semester.year = getYearFromUser();
-
-        // Determine if course is core or elective
-        cout << "Is this a Core Course? (1 for Yes, 0 for No): ";
-        cin >> newCourse.isCoreCourse;
-
-        // Get additional info based on course type
-        if (newCourse.isCoreCourse) {
-            cout << "Enter Lecture Hours: ";
-            cin >> newCourse.info.core.lectureHours;
-        } else {
-            cout << "Enter Lab Hours: ";
-            cin >> newCourse.info.elective.labHours;
-        }
-
-        // Add the new course to the array and increment count
-        courses[courseCount++] = newCourse;
-        cout << "Course added successfully!\n";
+    string addCourse(const Course& course) override {
+        courses.push_back(course);
+        return "Course added successfully!";
     }
 
-    // Implementation of displaying all courses
-    void displayCourses() override {
-        if (courseCount == 0) {
-            cout << "No courses to display!\n";
-            return;
+    string displayCourses() override {
+        if (courses.empty()) {
+            return "No courses to display!";
         }
 
-        // Loop through all courses and print their details
-        for (int i = 0; i < courseCount; i++) {
-            cout << "\nCourse " << (i + 1) << ":\n"
-                 << "Name: " << courses[i].name << "\n"
-                 << "Code: " << courses[i].code << "\n"
-                 << "Credits: " << courses[i].creditHours << "\n"
-                 << "Instructor: " << courses[i].instructor << "\n"
-                 << "Term: " << static_cast<int>(courses[i].semester.term) + 1 << "\n"
-                 << "Year: " << (2023 + static_cast<int>(courses[i].semester.year)) << "\n"
-                 << "Type: " << (courses[i].isCoreCourse ? "Core" : "Elective") << "\n";
+        std::stringstream ss;
+        int i = 0;
+        for (const auto& course : courses) {
+            ss << "Course " << (++i) << ":\n"
+               << "Name: " << course.name << "\n"
+               << "Code: " << course.code << "\n"
+               << "Credits: " << course.creditHours << "\n"
+               << "Instructor: " << course.instructor << "\n"
+               << "Term: " << static_cast<int>(course.semester.term) + 1 << "\n"
+               << "Year: " << (2025 + static_cast<int>(course.semester.year)) << "\n"
+               << "Type: " << (course.isCoreCourse ? "Core" : "Elective") << "\n";
             
-            // Print additional info based on course type
-            if (courses[i].isCoreCourse) {
-                cout << "Lecture Hours: " << courses[i].info.core.lectureHours << "\n";
-            } else {
-                cout << "Lab Hours: " << courses[i].info.elective.labHours << "\n";
+            if (std::holds_alternative<CoreInfo>(course.info)) {
+                ss << "Lecture Hours: " << std::get<CoreInfo>(course.info).lectureHours << "\n";
+            } else if (std::holds_alternative<ElectiveInfo>(course.info)) {
+                ss << "Lab Hours: " << std::get<ElectiveInfo>(course.info).labHours << "\n";
             }
-            cout << "-----------------------------\n";
+            ss << "-----------------------------\n";
         }
+        return ss.str();
     }
 
-    // Implementation of updating a course
-    void updateCourse() override {
-        string code;
-        cout << "Enter course code to update: ";
-        cin >> code;
-
-        // Search for the course by code
-        for (int i = 0; i < courseCount; i++) {
-            if (courses[i].code == code) {
-                cout << "Updating course:\n";
-                Course& course = courses[i];  // Reference to the found course
-                
-                // Update name
-                cout << "New Course Name (" << course.name << "): ";
-                cin.ignore();
-                getline(cin, course.name);
-
-                // Update credit hours
-                cout << "New Credit Hours (" << course.creditHours << "): ";
-                cin >> course.creditHours;
-
-                // Optionally update semester
-                cout << "Update semester? (1=Yes, 0=No): ";
-                int choice;
-                cin >> choice;
-                if (choice) {
-                    course.semester.term = getTermFromUser();
-                    course.semester.year = getYearFromUser();
-                }
-
-                cout << "Course updated successfully!\n";
-                return;
+    string updateCourse(const string& code, const Course& new_data, bool update_semester) override {
+        auto it = std::find_if(courses.begin(), courses.end(), [&code](const Course& c) { return c.code == code; });
+        if (it != courses.end()) {
+            it->name = new_data.name;
+            it->creditHours = new_data.creditHours;
+            if (update_semester) {
+                it->semester = new_data.semester;
             }
+            return "Course updated successfully!";
         }
-        cout << "Course not found!\n";
+        return "Course not found!";
     }
 
-    // Implementation of removing a course
-    void removeCourse() override {
-        string code;
-        cout << "Enter course code to remove: ";
-        cin >> code;
-
-        // Search for the course by code
-        for (int i = 0; i < courseCount; i++) {
-            if (courses[i].code == code) {
-                // Shift all subsequent courses left to fill the gap
-                for (int j = i; j < courseCount - 1; j++) {
-                    courses[j] = courses[j + 1];
-                }
-                courseCount--;  // Decrease total course count
-                cout << "Course removed successfully!\n";
-                return;
-            }
+    string removeCourse(const string& code) override {
+        auto it = std::find_if(courses.begin(), courses.end(), [&code](const Course& c) { return c.code == code; });
+        if (it != courses.end()) {
+            courses.erase(it);
+            return "Course removed successfully!";
         }
-        cout << "Course not found!\n";
+        return "Course not found!";
     }
 
-    // Implementation of searching for a course by code
-    void searchByCode() override {
-        string code;
-        cout << "Enter course code to search: ";
-        cin >> code;
-
-        // Search for the course
-        for (int i = 0; i < courseCount; i++) {
-            if (courses[i].code == code) {
-                // Display basic course info if found
-                cout << "Course found:\n"
-                     << "Name: " << courses[i].name << "\n"
-                     << "Code: " << courses[i].code << "\n"
-                     << "Instructor: " << courses[i].instructor << "\n";
-                return;
-            }
+    string searchByCode(const string& code) override {
+        auto it = std::find_if(courses.begin(), courses.end(), [&code](const Course& c) { return c.code == code; });
+        if (it != courses.end()) {
+            std::stringstream ss;
+            ss << "Course found:\n"
+               << "Name: " << it->name << "\n"
+               << "Code: " << it->code << "\n"
+               << "Instructor: " << it->instructor << "\n";
+            return ss.str();
         }
-        cout << "Course not found!\n";
+        return "Course not found!";
     }
 
-    // Implementation of listing courses by semester
-    void listBySemester() override {
-        // Get semester criteria from user
-        SemesterTerm term = getTermFromUser();
-        SemesterYear year = getYearFromUser();
-
-        cout << "Courses for selected semester:\n";
+    string listBySemester(SemesterTerm term, SemesterYear year) override {
+        std::stringstream ss;
+        ss << "Courses for selected semester:\n";
         bool found = false;
         
-        // Search for matching courses
-        for (int i = 0; i < courseCount; i++) {
-            if (courses[i].semester.term == term && 
-                courses[i].semester.year == year) {
-                cout << "- " << courses[i].code << ": " << courses[i].name << "\n";
+        for (const auto& course : courses) {
+            if (course.semester.term == term && course.semester.year == year) {
+                ss << "- " << course.code << ": " << course.name << "\n";
                 found = true;
             }
         }
         
         if (!found) {
-            cout << "No courses found for this semester.\n";
+            return "No courses found for this semester.";
         }
+        return ss.str();
     }
 };
 
 // Main function - entry point of the program
-int main() {
-    // Create a CourseManager instance (polymorphically as a Manager)
-    Manager* manager = new CourseManager();
-    int choice;
 
-    // Main menu loop
-    do {
-        cout << "\nCourse Management System\n"
-             << "1. Add Course\n"
-             << "2. Display Courses\n"
-             << "3. Update Course\n"
-             << "4. Remove Course\n"
-             << "5. Search by Code\n"
-             << "6. List by Semester\n"
-             << "7. Exit\n"
-             << "Enter your choice: ";
-        cin >> choice;
 
-        // Execute the selected operation
-        switch (choice) {
-            case 1: 
-                manager->addCourse(); 
-                break;
-            case 2: 
-                manager->displayCourses(); 
-                break;
-            case 3: 
-                manager->updateCourse(); 
-                break;
-            case 4: 
-                manager->removeCourse(); 
-                break;
-            case 5: 
-                manager->searchByCode(); 
-                break;
-            case 6: 
-                manager->listBySemester(); 
-                break;
-            case 7: 
-                cout << "Exiting the Course Management System. Goodbye!\n"; 
-                break;
-            default: 
-                cout << "Invalid choice! Please enter a number between 1 and 7.\n";
+class MainWindow : public Gtk::Window {
+protected:
+    std::unique_ptr<Manager> manager;
+
+    // Layout
+    Gtk::Box m_VBox;
+    Gtk::Grid m_Grid;
+    Gtk::ScrolledWindow m_ScrolledWindow;
+
+    // Widgets
+    Gtk::Entry m_EntryName;
+    Gtk::Entry m_EntryCode;
+    Gtk::Entry m_EntryCredits;
+    Gtk::Entry m_EntryInstructor;
+    Gtk::ComboBoxText m_ComboTerm;
+    Gtk::ComboBoxText m_ComboYear;
+    Gtk::ComboBoxText m_ComboType;
+    Gtk::Entry m_EntryHours;
+
+    // Buttons
+    Gtk::Button m_BtnAdd;
+    Gtk::Button m_BtnUpdate;
+    Gtk::Button m_BtnRemove;
+    Gtk::Button m_BtnSearch;
+    Gtk::Button m_BtnListSem;
+    Gtk::Button m_BtnDisplayAll;
+
+    // Output area
+    Gtk::TextView m_TextView;
+    Glib::RefPtr<Gtk::TextBuffer> m_TextBuffer;
+
+    void print_output(const std::string& text) {
+        m_TextBuffer->set_text(text);
+    }
+
+    Course parse_course_from_inputs() {
+        Course c;
+        c.name = m_EntryName.get_text();
+        c.code = m_EntryCode.get_text();
+
+        try {
+            c.creditHours = std::stoi(m_EntryCredits.get_text());
+        } catch(...) { c.creditHours = 0; }
+
+        c.instructor = m_EntryInstructor.get_text();
+
+        int term_idx = m_ComboTerm.get_active_row_number();
+        c.semester.term = (term_idx >= 0) ? static_cast<SemesterTerm>(term_idx) : SemesterTerm::FALL;
+
+        int year_idx = m_ComboYear.get_active_row_number();
+        c.semester.year = (year_idx >= 0) ? static_cast<SemesterYear>(year_idx) : SemesterYear::Y2025;
+
+        int type_idx = m_ComboType.get_active_row_number();
+        c.isCoreCourse = (type_idx == 0); // Core is first option
+
+        int hours = 0;
+        try {
+            hours = std::stoi(m_EntryHours.get_text());
+        } catch(...) { hours = 0; }
+
+        if (c.isCoreCourse) {
+            CoreInfo ci; ci.lectureHours = hours;
+            c.info = ci;
+        } else {
+            ElectiveInfo ei; ei.labHours = hours;
+            c.info = ei;
         }
-    } while (choice != 7);  // Continue until user chooses to exit
 
-    return 0;
+        return c;
+    }
+
+    // Callbacks
+    void on_button_add_clicked() {
+        Course c = parse_course_from_inputs();
+        if (c.code.empty()) {
+            print_output("Error: Course Code cannot be empty!");
+            return;
+        }
+        string res = manager->addCourse(c);
+        print_output(res);
+    }
+
+    void on_button_update_clicked() {
+        Course c = parse_course_from_inputs();
+        string code = m_EntryCode.get_text();
+        if (code.empty()) {
+            print_output("Error: Please provide a Course Code to update!");
+            return;
+        }
+        string res = manager->updateCourse(code, c, true);
+        print_output(res);
+    }
+
+    void on_button_remove_clicked() {
+        string code = m_EntryCode.get_text();
+        if (code.empty()) {
+            print_output("Error: Please provide a Course Code to remove!");
+            return;
+        }
+        string res = manager->removeCourse(code);
+        print_output(res);
+    }
+
+    void on_button_search_clicked() {
+        string code = m_EntryCode.get_text();
+        if (code.empty()) {
+            print_output("Error: Please provide a Course Code to search!");
+            return;
+        }
+        string res = manager->searchByCode(code);
+        print_output(res);
+    }
+
+    void on_button_list_sem_clicked() {
+        int term_idx = m_ComboTerm.get_active_row_number();
+        SemesterTerm term = (term_idx >= 0) ? static_cast<SemesterTerm>(term_idx) : SemesterTerm::FALL;
+
+        int year_idx = m_ComboYear.get_active_row_number();
+        SemesterYear year = (year_idx >= 0) ? static_cast<SemesterYear>(year_idx) : SemesterYear::Y2025;
+
+        string res = manager->listBySemester(term, year);
+        print_output(res);
+    }
+
+    void on_button_display_all_clicked() {
+        string res = manager->displayCourses();
+        print_output(res);
+    }
+
+public:
+    MainWindow()
+        : m_VBox(Gtk::ORIENTATION_VERTICAL, 10),
+          m_BtnAdd("Add Course"), m_BtnUpdate("Update Course"),
+          m_BtnRemove("Remove Course"), m_BtnSearch("Search by Code"),
+          m_BtnListSem("List by Semester"), m_BtnDisplayAll("Display All")
+    {
+        set_title("Course Management System");
+        set_default_size(700, 600);
+        set_border_width(10);
+
+        manager = std::make_unique<CourseManager>();
+
+        add(m_VBox);
+
+        // Setup Grid
+        m_Grid.set_row_spacing(5);
+        m_Grid.set_column_spacing(10);
+
+        // Row 0
+        m_Grid.attach(*Gtk::make_managed<Gtk::Label>("Name:"), 0, 0, 1, 1);
+        m_Grid.attach(m_EntryName, 1, 0, 1, 1);
+        m_Grid.attach(*Gtk::make_managed<Gtk::Label>("Code:"), 2, 0, 1, 1);
+        m_Grid.attach(m_EntryCode, 3, 0, 1, 1);
+
+        // Row 1
+        m_Grid.attach(*Gtk::make_managed<Gtk::Label>("Credits:"), 0, 1, 1, 1);
+        m_Grid.attach(m_EntryCredits, 1, 1, 1, 1);
+        m_Grid.attach(*Gtk::make_managed<Gtk::Label>("Instructor:"), 2, 1, 1, 1);
+        m_Grid.attach(m_EntryInstructor, 3, 1, 1, 1);
+
+        // Row 2
+        m_Grid.attach(*Gtk::make_managed<Gtk::Label>("Term:"), 0, 2, 1, 1);
+        m_ComboTerm.append("Fall"); m_ComboTerm.append("Spring"); m_ComboTerm.append("Summer"); m_ComboTerm.append("Winter");
+        m_ComboTerm.set_active(0);
+        m_Grid.attach(m_ComboTerm, 1, 2, 1, 1);
+
+        m_Grid.attach(*Gtk::make_managed<Gtk::Label>("Year:"), 2, 2, 1, 1);
+        m_ComboYear.append("2025"); m_ComboYear.append("2026"); m_ComboYear.append("2027"); m_ComboYear.append("2028");
+        m_ComboYear.set_active(0);
+        m_Grid.attach(m_ComboYear, 3, 2, 1, 1);
+
+        // Row 3
+        m_Grid.attach(*Gtk::make_managed<Gtk::Label>("Type:"), 0, 3, 1, 1);
+        m_ComboType.append("Core"); m_ComboType.append("Elective");
+        m_ComboType.set_active(0);
+        m_Grid.attach(m_ComboType, 1, 3, 1, 1);
+
+        m_Grid.attach(*Gtk::make_managed<Gtk::Label>("Hours (Lec/Lab):"), 2, 3, 1, 1);
+        m_Grid.attach(m_EntryHours, 3, 3, 1, 1);
+
+        m_VBox.pack_start(m_Grid, Gtk::PACK_SHRINK);
+
+        // Setup Buttons Box
+        Gtk::Box* btnBox1 = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 5);
+        btnBox1->pack_start(m_BtnAdd); btnBox1->pack_start(m_BtnUpdate); btnBox1->pack_start(m_BtnRemove);
+        m_VBox.pack_start(*btnBox1, Gtk::PACK_SHRINK);
+
+        Gtk::Box* btnBox2 = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 5);
+        btnBox2->pack_start(m_BtnSearch); btnBox2->pack_start(m_BtnListSem); btnBox2->pack_start(m_BtnDisplayAll);
+        m_VBox.pack_start(*btnBox2, Gtk::PACK_SHRINK);
+
+        // Setup Text View for output
+        m_ScrolledWindow.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
+        m_TextBuffer = Gtk::TextBuffer::create();
+        m_TextView.set_buffer(m_TextBuffer);
+        m_TextView.set_editable(false);
+        m_ScrolledWindow.add(m_TextView);
+        m_VBox.pack_start(m_ScrolledWindow, Gtk::PACK_EXPAND_WIDGET);
+
+        // Connect Signals
+        m_BtnAdd.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_button_add_clicked));
+        m_BtnUpdate.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_button_update_clicked));
+        m_BtnRemove.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_button_remove_clicked));
+        m_BtnSearch.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_button_search_clicked));
+        m_BtnListSem.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_button_list_sem_clicked));
+        m_BtnDisplayAll.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_button_display_all_clicked));
+
+        show_all_children();
+        print_output("Welcome to the GUI Course Management System!");
+    }
+};
+
+int main(int argc, char* argv[]) {
+    auto app = Gtk::Application::create(argc, argv, "org.gtkmm.example.CourseManager");
+    MainWindow window;
+    return app->run(window);
 }
